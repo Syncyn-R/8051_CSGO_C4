@@ -1,0 +1,30 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Project:</h2>
+c:\Users\Eternally\Desktop\C4\Keil\C4.uvproj
+Project File Date:  10/02/2023
+
+<h2>Output:</h2>
+Build target 'Target 1'
+assembling STARTUP.A51...
+compiling C4.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_DELAYS?C4
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_PRINTLR?C4
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_PRINTLU?C4
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?PROCESSKEYS?C4
+    CALLER1: ?C_C51STARTUP
+    CALLER2: ?PR?KEYINTERRUPT?C4
+*** WARNING L15: MULTIPLE CALL TO SEGMENT
+    SEGMENT: ?PR?WRONGPASSWORD?C4
+    CALLER1: ?C_C51STARTUP
+    CALLER2: ?PR?KEYINTERRUPT?C4
+Program Size: data=78.0 xdata=0 code=2247
+creating hex file from "C4"...
+"C4" - 0 Error(s), 5 Warning(s).

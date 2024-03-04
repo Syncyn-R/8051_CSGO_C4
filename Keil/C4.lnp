@@ -1,0 +1,4 @@
+"STARTUP.obj",
+"C4.obj" 
+TO "C4" 
+RAMSIZE(256) 

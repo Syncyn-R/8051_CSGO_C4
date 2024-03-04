@@ -1,0 +1,585 @@
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE C4
+OBJECT MODULE PLACED IN C4.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE C4.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          //  Create at 2023-10-2
+   2          //  STC89C52RC @ 33.1776MHz(6T)
+   3          //  C4(CSGO)
+   4          //  TH TL 00100111(39) 11111111(255) 10239 100@33.1776MHz(6T)
+   5          //  TH TL 11101010(234) 11100111(231) 60135 1024@33.1776MHz(6T)
+   6          
+   7          #include <reg52.h>
+   8          #include <serialfunc.h>
+   9          
+  10          //键盘引脚定义
+  11          sbit keypad1 = P0 ^ 0;
+  12          sbit keypad2 = P0 ^ 1;
+  13          sbit keypad3 = P0 ^ 2;
+  14          sbit keypad4 = P1 ^ 0;
+  15          sbit keypad5 = P1 ^ 1;
+  16          sbit keypad6 = P1 ^ 2;
+  17          sbit keypad7 = P1 ^ 3;
+  18          
+  19          //蜂鸣器引脚定义
+  20          sbit speaker0 = P1 ^ 4;
+  21          sbit led0 = P1 ^ 5;
+  22          
+  23          //调试引脚定义
+  24          sbit serialdebugpin = P0 ^ 6;
+  25          sbit debugpin = P0 ^ 7;
+  26          
+  27          //1601引脚定义
+  28          // sbit lcd0vl = P1 ^ 6;
+  29          sbit lcd0backlight = P1 ^ 7;
+  30          sbit lcd0rs = P3 ^ 7;
+  31          sbit lcd0rw = P3 ^ 6;
+  32          sbit lcd0e = P3 ^ 5;
+  33          
+  34          //雷管引脚定义
+  35          sbit explodepin = P3 ^ 4;
+  36          
+  37          //主函数变量
+  38          unsigned char g_mainfunc = 1, g_c4active = 0;
+  39          //按键变量
+  40          unsigned char g_keys[12] = {0}, g_keysold[12] = {0};
+  41          //调试变量
+  42          unsigned char g_serialoutput = 0;
+  43          //定时变量
+  44          unsigned char g_TH = 0, g_TL = 0, g_lastTH = 0, g_lastTL = 0;
+  45          //C4变量
+  46          unsigned char g_c4passwordset[7] = {'7', '3', '5', '5', '6', '0', '8'}, g_c4password[7] = {'*', '*', '*', 
+             -'*', '*', '*', '*'}, g_c4passwordcur = 0, g_c4passwordvalid = 0, g_c4timer = 0;
+  47          //延时变量
+  48          unsigned char g_delaycount = 0;
+  49          //屏幕变量
+  50          unsigned char g_charpos = 0;
+  51          
+  52          //延时函数
+  53          void delay976Us(unsigned char t){
+  54   1          g_delaycount = t;
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 2   
+
+  55   1          g_TH = 234;
+  56   1          g_TL = 231;
+  57   1          TH0 = g_TH;
+  58   1          TL0 = g_TL;
+  59   1          TR0 = 1;
+  60   1          while(g_delaycount);
+  61   1      }
+  62          
+  63          void delay10Ms(unsigned char t){
+  64   1          g_delaycount = t;
+  65   1          g_TH = 39;
+  66   1          g_TL = 255;
+  67   1          TH0 = g_TH;
+  68   1          TL0 = g_TL;
+  69   1          TR0 = 1;
+  70   1          while(g_delaycount);
+  71   1      }
+  72          
+  73          void delayBeep(unsigned char t){
+  74   1          unsigned char t1 = t;
+  75   1          unsigned char t2 = t;
+  76   1          for(;t > 0; t--)
+  77   1              for(;t1 > 0; t1--)
+  78   1                  for(;t2 > 0; t2--);
+  79   1      }
+  80          
+  81          void delayS(unsigned char t){
+  82   1          unsigned times = 0;
+  83   1          for(; t > 0; t--){
+  84   2              delay10Ms(100);
+  85   2              delay10Ms(100);
+  86   2              delay10Ms(100);
+  87   2              delay10Ms(100);
+  88   2          }
+  89   1      }
+  90          
+  91          //C4哔哔函数
+  92          void c4Beep(unsigned char t2, unsigned char th, unsigned char tl){
+  93   1          unsigned char t;
+  94   1          //EA = 0;
+  95   1          speaker0 = 0;
+  96   1          for(; t2 > 0; t2--)
+  97   1              for(t = 255; t > 0; t--){
+  98   2                  delayBeep(th);
+  99   2                  speaker0 = ~speaker0;
+ 100   2                  delayBeep(tl);
+ 101   2              }
+ 102   1          speaker0 = 1;
+ 103   1          //EA = 1;
+ 104   1      }
+ 105          
+ 106          void c4BeepNew();
+ 107          
+ 108          //C4叨哔函数
+ 109          void c4Beeps(unsigned char times, unsigned char c4beeptime, unsigned char beepdelay, unsigned char th, uns
+             -igned char tl){
+ 110   1          for(;times > 0; times--){
+ 111   2              c4Beep(c4beeptime, th, tl);
+ 112   2              delay10Ms(beepdelay);
+ 113   2          }
+ 114   1      }
+ 115          
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 3   
+
+ 116          //按键循环
+ 117          /* void detectKeyLoop(){
+ 118              keypad1 = 0;
+ 119              keypad1 = 1;
+ 120              keypad2 = 0;
+ 121              keypad2 = 1;
+ 122              keypad3 = 0;
+ 123              keypad3 = 1;
+ 124          } */
+ 125          
+ 126          //按键检测函数(物理)
+ 127          void detectKeys(){
+ 128   1      
+ 129   1          keypad1 = 0;
+ 130   1          if(keypad4 == 0) g_keys[1] = 1;
+ 131   1          else g_keys[1] = 0;
+ 132   1          if(keypad5 == 0) g_keys[4] = 1;
+ 133   1          else g_keys[4] = 0;
+ 134   1          if(keypad6 == 0) g_keys[7] = 1;
+ 135   1          else g_keys[7] = 0;
+ 136   1          if(keypad7 == 0) g_keys[10] = 1;
+ 137   1          else g_keys[10] = 0;
+ 138   1          keypad1 = 1;
+ 139   1      
+ 140   1          delay976Us(1);
+ 141   1      
+ 142   1          keypad2 = 0;
+ 143   1          if(keypad4 == 0) g_keys[2] = 1;
+ 144   1          else g_keys[2] = 0;
+ 145   1          if(keypad5 == 0) g_keys[5] = 1;
+ 146   1          else g_keys[5] = 0;
+ 147   1          if(keypad6 == 0) g_keys[8] = 1;
+ 148   1          else g_keys[8] = 0;
+ 149   1          if(keypad7 == 0) g_keys[0] = 1;
+ 150   1          else g_keys[0] = 0;
+ 151   1          keypad2 = 1;
+ 152   1      
+ 153   1          delay976Us(1);
+ 154   1      
+ 155   1          keypad3 = 0;
+ 156   1          if(keypad4 == 0) g_keys[3] = 1;
+ 157   1          else g_keys[3] = 0;
+ 158   1          if(keypad5 == 0) g_keys[6] = 1;
+ 159   1          else g_keys[6] = 0;
+ 160   1          if(keypad6 == 0) g_keys[9] = 1;
+ 161   1          else g_keys[9] = 0;
+ 162   1          if(keypad7 == 0) g_keys[11] = 1;
+ 163   1          else g_keys[11] = 0;
+ 164   1          keypad3 = 1;
+ 165   1      
+ 166   1          delay976Us(1);
+ 167   1      }
+ 168          
+ 169          //初始化扬声器函数
+ 170          void initSpeaker(){
+ 171   1          c4Beeps(2, 4, 1, 21, 1);
+ 172   1      }
+ 173          
+ 174          //发送命令
+ 175          void sendC1601CMD(unsigned char inCMD){
+ 176   1          if(inCMD == 1) g_charpos = 0;
+ 177   1          lcd0rs = 0;
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 4   
+
+ 178   1          lcd0rw = 0;
+ 179   1          P2 = inCMD;
+ 180   1          lcd0e = 1;
+ 181   1          delay976Us(2);
+ 182   1          lcd0e = 0;
+ 183   1      }
+ 184          
+ 185          //不跳过发送数据
+ 186          void sendC1601CharU(unsigned char inChar){
+ 187   1          lcd0rs = 1;
+ 188   1          lcd0rw = 0;
+ 189   1          P2 = inChar;
+ 190   1          lcd0e = 1;
+ 191   1          delay976Us(2);
+ 192   1          lcd0e = 0;
+ 193   1      }
+ 194          
+ 195          //反向发送数据
+ 196          void sendC1601CharR(unsigned char inChar){
+ 197   1          lcd0rs = 1;
+ 198   1          lcd0rw = 0;
+ 199   1          P2 = inChar;
+ 200   1          lcd0e = 1;
+ 201   1          delay976Us(2);
+ 202   1          lcd0e = 0;
+ 203   1          g_charpos--;
+ 204   1          if(g_charpos == 8) sendC1601CMD(135);
+ 205   1      }
+ 206          
+ 207          //发送数据
+ 208          void sendC1601Char(unsigned char inChar){
+ 209   1          lcd0rs = 1;
+ 210   1          lcd0rw = 0;
+ 211   1          P2 = inChar;
+ 212   1          lcd0e = 1;
+ 213   1          delay976Us(2);
+ 214   1          lcd0e = 0;
+ 215   1          g_charpos++;
+ 216   1          if(g_charpos == 8) sendC1601CMD(192);
+ 217   1      }
+ 218          
+ 219          //反向打印字符串
+ 220          void printlR(unsigned char *inChar){
+ 221   1          sendC1601CMD(4);
+ 222   1          while(*inChar != '\0'){
+ 223   2              sendC1601CharR(*inChar);
+ 224   2              inChar++;
+ 225   2          }
+ 226   1      }
+ 227          
+ 228          //延时反向打印字符串
+ 229          void printlRD(unsigned char *inChar, unsigned char inDelay){
+ 230   1          sendC1601CMD(4);
+ 231   1          while(*inChar != '\0'){
+ 232   2              sendC1601CharR(*inChar);
+ 233   2              delay10Ms(inDelay);
+ 234   2              inChar++;
+ 235   2          }
+ 236   1      }
+ 237          
+ 238          //不跳过打印字符串
+ 239          void printlU(unsigned char *inChar){
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 5   
+
+ 240   1          while(*inChar != '\0'){
+ 241   2              sendC1601CharU(*inChar);
+ 242   2              inChar++;
+ 243   2          }
+ 244   1      }
+ 245          
+ 246          //打印字符串
+ 247          void printl(unsigned char *inChar){
+ 248   1          sendC1601CMD(6);
+ 249   1          while(*inChar != '\0'){
+ 250   2              sendC1601Char(*inChar);
+ 251   2              inChar++;
+ 252   2          }
+ 253   1      }
+ 254          
+ 255          //更新屏幕
+ 256          void updateScreenPassword(){
+ 257   1          unsigned char passwordpos = g_c4passwordcur;
+ 258   1          sendC1601CMD(6);
+ 259   1          sendC1601CMD(128);
+ 260   1          g_charpos = 0;
+ 261   1          for(; 7 - passwordpos; passwordpos++) printl(" *");
+ 262   1          for(passwordpos = 0; passwordpos < g_c4passwordcur; passwordpos++){
+ 263   2              sendC1601Char(' ');
+ 264   2              sendC1601Char(g_c4password[passwordpos]);
+ 265   2          }
+ 266   1      }
+ 267          
+ 268          //初始化屏幕
+ 269          void initC1601(){
+ 270   1          // lcd0vl = 0;
+ 271   1          lcd0backlight = 0;
+ 272   1          sendC1601CMD(56);
+ 273   1          sendC1601CMD(12);
+ 274   1          sendC1601CMD(6);
+ 275   1          sendC1601CMD(1);
+ 276   1      }
+ 277          
+ 278          //初始化函数
+ 279          void initHw(){
+ 280   1          //初始化IO接口
+ 281   1          P0 = 248;
+ 282   1          P1 = 255;
+ 283   1          P2 = 0;
+ 284   1          P3 = 23;
+ 285   1      
+ 286   1          //初始化定时设置
+ 287   1          TMOD = 33;
+ 288   1      
+ 289   1          //初始化中断
+ 290   1          EA = 1;
+ 291   1          IT0 = 1;
+ 292   1          ET0 = 1;
+ 293   1          // PT0 = 1;
+ 294   1      
+ 295   1          initSpeaker();  //嘟嘟嘟测试
+ 296   1          initC1601();  //亮晶晶测试
+ 297   1      
+ 298   1      }
+ 299          
+ 300          //调试模式函数
+ 301          void debugMode(){
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 6   
+
+ 302   1          while(1);
+ 303   1      }
+ 304          
+ 305          //启用串口调试
+ 306          void enableSerialDebug(){
+ 307   1          g_serialoutput = 1;
+ 308   1          PCON = 128;
+ 309   1          SM0 = 0;
+ 310   1          SM1 = 1;
+ 311   1          REN = 1;
+ 312   1          TH1 = 253;
+ 313   1          TL1 = 253;
+ 314   1          TR1 = 1;
+ 315   1          prints("Serial debug enabled!\n\r");
+ 316   1          printl("Serial Debug On");
+ 317   1          delay10Ms(200);
+ 318   1          ES = 1;
+ 319   1      }
+ 320          
+ 321          //调试功能检测
+ 322          void detectDebugPin(){
+ 323   1          if(debugpin == 1) debugMode();
+ 324   1          if(serialdebugpin == 1) enableSerialDebug();
+ 325   1      }
+ 326          
+ 327          //初始化软件
+ 328          void initSys(){
+ 329   1          EX0 = 0;
+ 330   1          if(g_serialoutput) prints("->initSys()");
+ 331   1          sendC1601CMD(1);
+ 332   1          g_c4timer = 100;
+ 333   1          g_c4passwordvalid = 0;
+ 334   1          g_c4passwordcur = 0;
+ 335   1          g_charpos = 0;
+ 336   1          g_c4active = 0;
+ 337   1      
+ 338   1          g_charpos = 15;
+ 339   1          sendC1601CMD(198);
+ 340   1          printlRD(" * * * * * * * ", 2);
+ 341   1          g_charpos = 15;
+ 342   1          sendC1601CMD(198);
+ 343   1           if(g_serialoutput) prints("initSys()->");
+ 344   1          EX0 = 1;
+ 345   1      }
+ 346          
+ 347          //爆炸
+ 348          void explode(){
+ 349   1          delay10Ms(100);
+ 350   1          c4Beeps(11, 1, 6, 19, 1);
+ 351   1          explodepin = 0; //激活雷管
+ 352   1          initSys();
+ 353   1      }
+ 354          
+ 355          //密码错误
+ 356          void wrongPassword(){
+ 357   1          unsigned char t = 3;
+ 358   1          delay10Ms(100);
+ 359   1          if(g_serialoutput) prints("Password mismatch");
+ 360   1          while(t){
+ 361   2              sendC1601CMD(8);
+ 362   2              delay10Ms(15);
+ 363   2              sendC1601CMD(12);
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 7   
+
+ 364   2              delay10Ms(15);
+ 365   2              c4Beep(4, 29, 1);
+ 366   2              t--;
+ 367   2          }
+ 368   1          initSys();
+ 369   1      }
+ 370          
+ 371          //检查密码
+ 372          void checkPassword(){
+ 373   1          while(g_c4passwordcur){
+ 374   2              if(g_c4password[g_c4passwordcur - 1] == g_c4passwordset[g_c4passwordcur - 1]){
+ 375   3                  g_c4passwordvalid++;
+ 376   3              }
+ 377   2              g_c4passwordcur--;
+ 378   2          }
+ 379   1          if(g_c4passwordvalid != 7) wrongPassword();
+ 380   1      }
+ 381          
+ 382          //输入密码
+ 383          void enterPassword(unsigned char inChar){
+ 384   1          g_c4password[g_c4passwordcur] = inChar;
+ 385   1          g_c4passwordcur++;
+ 386   1          // sendC1601CharR(' ');
+ 387   1          // sendC1601CharR(inChar);
+ 388   1          updateScreenPassword();
+ 389   1          if(g_c4passwordcur >= 7) checkPassword();
+ 390   1      }
+ 391          
+ 392          //按键处理函数
+ 393          void keyPress(unsigned char key){
+ 394   1          switch(key){
+ 395   2          case 0:
+ 396   2              if(g_serialoutput) prints("Key 0 press\n\r");
+ 397   2              enterPassword(48);
+ 398   2              break;
+ 399   2          case 1:
+ 400   2              if(g_serialoutput) prints("Key 1 press\n\r");
+ 401   2              enterPassword(49);
+ 402   2              break;
+ 403   2          case 2:
+ 404   2              if(g_serialoutput) prints("Key 2 press\n\r");
+ 405   2              enterPassword(50);
+ 406   2              break;
+ 407   2          case 3:
+ 408   2              if(g_serialoutput) prints("Key 3 press\n\r");
+ 409   2              enterPassword(51);
+ 410   2              break;
+ 411   2          case 4:
+ 412   2              if(g_serialoutput) prints("Key 4 press\n\r");
+ 413   2              enterPassword(52);
+ 414   2              break;
+ 415   2          case 5:
+ 416   2              if(g_serialoutput) prints("Key 5 press\n\r");
+ 417   2              enterPassword(53);
+ 418   2              break;
+ 419   2          case 6:
+ 420   2              if(g_serialoutput) prints("Key 6 press\n\r");
+ 421   2              enterPassword(54);
+ 422   2              break;
+ 423   2          case 7:
+ 424   2              if(g_serialoutput) prints("Key 7 press\n\r");
+ 425   2              enterPassword(55);
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 8   
+
+ 426   2              break;
+ 427   2          case 8:
+ 428   2              if(g_serialoutput) prints("Key 8 press\n\r");
+ 429   2              enterPassword(56);
+ 430   2              break;
+ 431   2          case 9:
+ 432   2              if(g_serialoutput) prints("Key 9 press\n\r");
+ 433   2              enterPassword(57);
+ 434   2              break;
+ 435   2          case 10:
+ 436   2              if(g_serialoutput) prints("Key * press\n\r");
+ 437   2              // enterPassword(48);
+ 438   2              break;
+ 439   2          case 11:
+ 440   2              if(g_serialoutput) prints("Key # press\n\r");
+ 441   2              // enterPassword(48);
+ 442   2              break;
+ 443   2          default:
+ 444   2              break;
+ 445   2          }
+ 446   1      }
+ 447          
+ 448          //按键检测函数(虚拟)
+ 449          void processKeys(){
+ 450   1          unsigned char keyNum = 0;
+ 451   1          if(g_keys[0] && !g_keysold[0]) keyPress(0);
+ 452   1          else if(g_keys[1] && !g_keysold[1]) keyPress(1);
+ 453   1          else if(g_keys[2] && !g_keysold[2]) keyPress(2);
+ 454   1          else if(g_keys[3] && !g_keysold[3]) keyPress(3);
+ 455   1          else if(g_keys[4] && !g_keysold[4]) keyPress(4);
+ 456   1          else if(g_keys[5] && !g_keysold[5]) keyPress(5);
+ 457   1          else if(g_keys[6] && !g_keysold[6]) keyPress(6);
+ 458   1          else if(g_keys[7] && !g_keysold[7]) keyPress(7);
+ 459   1          else if(g_keys[8] && !g_keysold[8]) keyPress(8);
+ 460   1          else if(g_keys[9] && !g_keysold[9]) keyPress(9);
+ 461   1          else if(g_keys[10] && !g_keysold[10]) keyPress(10);
+ 462   1          else if(g_keys[11] && !g_keysold[11]) keyPress(11);
+ 463   1          for(; keyNum < 12; keyNum++) g_keysold[keyNum] = g_keys[keyNum];
+ 464   1      }
+ 465          
+ 466          //激活C4
+ 467          void activeC4(){
+ 468   1          unsigned lastEX0 = EX0;
+ 469   1          if(EX0) EX0 = 0;
+ 470   1          g_c4timer = 100;
+ 471   1          g_c4active = 1;
+ 472   1          delay10Ms(100);
+ 473   1          if(g_serialoutput) prints("C4 actived\n\r");
+ 474   1          sendC1601CMD(1);
+ 475   1          printl(" * * * * * * * ");
+ 476   1          while(g_c4active){
+ 477   2              led0 = 0;
+ 478   2              c4Beep(3, 20, 1);
+ 479   2              delay10Ms(1);
+ 480   2              led0 = 1;
+ 481   2              processKeys();
+ 482   2              delay10Ms(g_c4timer);
+ 483   2              if(g_c4timer >= 52) g_c4timer -= 2;
+ 484   2              if(g_c4timer < 52 && g_c4timer) g_c4timer--;
+ 485   2              if(!g_c4timer) explode();
+ 486   2          }
+ 487   1          EX0 = lastEX0;
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 9   
+
+ 488   1      }
+ 489          
+ 490          //主函数
+ 491          void main(){
+ 492   1          initHw();
+ 493   1          detectDebugPin();
+ 494   1          initSys();
+ 495   1          while(g_mainfunc){
+ 496   2              if(g_c4passwordvalid == 7) activeC4();
+ 497   2          };
+ 498   1      }
+ 499          
+ 500          //外部中断0函数
+ 501          void keyInterrupt() interrupt 0{
+ 502   1          unsigned char lastPT0 = PT0, lastTR0 = TR0, lastTH = g_TH, lastTL = g_TL, lastTH0 = TH0, lastTL0 = TL0
+             -, lastdelaycount = g_delaycount;
+ 503   1          if(TR0) TR0 = 0;
+ 504   1          if(!PT0) PT0 = 1;
+ 505   1          keypad1 = 1;
+ 506   1          keypad2 = 1;
+ 507   1          keypad3 = 1;
+ 508   1          delay976Us(1);
+ 509   1          detectKeys();
+ 510   1          if(!g_c4active) processKeys();
+ 511   1          keypad1 = 0;
+ 512   1          keypad2 = 0;
+ 513   1          keypad3 = 0;
+ 514   1          PT0 = lastPT0;
+ 515   1          g_delaycount = lastdelaycount;
+ 516   1          g_TH = lastTH;
+ 517   1          g_TL = lastTL;
+ 518   1          TH0 = lastTH0;
+ 519   1          TL0 = lastTL0;
+ 520   1          TR0 = lastTR0;
+ 521   1      }
+ 522          
+ 523          //定时器0中断
+ 524          void timer0Interrupt() interrupt 1{
+ 525   1          g_delaycount--;
+ 526   1          TH0 = g_TH;
+ 527   1          TL0 = g_TL;
+ 528   1          if(!g_delaycount) TR0 = 0;
+ 529   1      }
+ 530          
+ 531          //串口中断
+ 532          void serialInterrupt() interrupt 4{
+ 533   1          unsigned char lastEA = EA, recvmsg = SBUF;
+ 534   1          if(EA) EA = 0;
+ 535   1          EA = lastEA;
+ 536   1          RI = 0;
+ 537   1      }
+ 538          
+ 539          //Xiziya_R
+ 540          //Ver 1.0(Release) @ 2023/10/6
+ 541          //Ver 1.1(Bug fix) @ 2023/10/8
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1705    ----
+   CONSTANT SIZE    =    282    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+C51 COMPILER V9.00   C4                                                                    10/09/2023 03:09:12 PAGE 10  
+
+   DATA SIZE        =     50      19
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
